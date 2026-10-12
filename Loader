@@ -1,0 +1,1186 @@
+--[[
+    NYX LAUNCHER v2.0 — cinematic
+    staggered entrance · ripple · glow cards · shine sweep
+    toast notifications · confirm with icon · full unload
+    RightShift = hide/show · × = full unload
+]]
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+
+local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+if PlayerGui:FindFirstChild("NyxLauncher") then
+    PlayerGui.NyxLauncher:Destroy()
+end
+
+-- ═══════════════ CONFIG ═══════════════
+local Theme = {
+    BG          = Color3.fromRGB(10, 10, 16),
+    Panel       = Color3.fromRGB(16, 15, 24),
+    Card        = Color3.fromRGB(22, 21, 34),
+    CardHover   = Color3.fromRGB(30, 27, 48),
+    CardSelect  = Color3.fromRGB(36, 30, 58),
+    Accent      = Color3.fromRGB(138, 43, 226),
+    AccentBright= Color3.fromRGB(175, 90, 255),
+    AccentDim   = Color3.fromRGB(65, 22, 115),
+    Text        = Color3.fromRGB(240, 238, 250),
+    SubText     = Color3.fromRGB(155, 150, 175),
+    Muted       = Color3.fromRGB(85, 80, 105),
+    Stroke      = Color3.fromRGB(45, 42, 65),
+    StrokeBright= Color3.fromRGB(100, 55, 180),
+    Success     = Color3.fromRGB(80, 220, 130),
+    Warning     = Color3.fromRGB(255, 180, 60),
+    Danger      = Color3.fromRGB(255, 70, 90),
+}
+
+local LaunchList = {
+    {
+        name = "Desert Storm",
+        desc = "script - aimbot, esp",
+        gameId = 115872975504419,
+        action = function()
+            loadstring(game:HttpGet("https://pastebin.com/raw/tnsM6Pwh"))()
+        end
+    },
+    {
+        name = "Fling Hub",
+        desc = "universal script hub",
+        gameId = 123974602339071,
+        action = function()
+            loadstring(game:HttpGet("https://pastebin.com/raw/PRMynMpS"))()
+        end
+    },
+    {
+        name = "RELOADED",
+        desc = "script - aimbot, esp",
+        gameId = 131964389958213,
+        action = function()
+            loadstring(game:HttpGet("https://pastebin.com/raw/LiUMfvda"))()
+        end
+    },
+}
+
+-- ═══════════════ HELPERS ═══════════════
+local function Create(class, props)
+    local inst = Instance.new(class)
+    for k, v in pairs(props) do
+        inst[k] = v
+    end
+    return inst
+end
+
+local function Tween(obj, time, props, style, dir)
+    TweenService:Create(obj, TweenInfo.new(time, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out), props):Play()
+end
+
+local function Corner(parent, r)
+    Create("UICorner", { Parent = parent, CornerRadius = UDim.new(0, r or 8) })
+end
+
+local function Stroke(parent, color, thickness, transparency)
+    return Create("UIStroke", { Parent = parent, Color = color or Theme.Stroke, Thickness = thickness or 1, Transparency = transparency or 0 })
+end
+
+local function Gradient(parent, c1, c2, rot)
+    return Create("UIGradient", { Parent = parent, Rotation = rot or 90, Color = ColorSequence.new(c1, c2) })
+end
+
+local function Ripple(frame)
+    local circle = Create("Frame", {
+        Parent = frame,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        BackgroundTransparency = 0.85,
+        BorderSizePixel = 0,
+        ZIndex = 50,
+    })
+    Corner(circle, 100)
+    local target = math.max(frame.AbsoluteSize.X, frame.AbsoluteSize.Y) * 2.2
+    Tween(circle, 0.45, { Size = UDim2.new(0, target, 0, target), BackgroundTransparency = 1 }, Enum.EasingStyle.Quart)
+    task.delay(0.5, function() circle:Destroy() end)
+end
+
+-- ═══════════════ ICON LOADER ═══════════════
+local function GetGameIcon(gameId)
+    if not gameId or gameId <= 0 then return nil end
+
+    local ok, iconUrl = pcall(function()
+        local raw = game:HttpGet(
+            "https://thumbnails.roblox.com/v1/places/gameicons?placeIds=" .. tostring(gameId) .. "&size=150x150&format=Png&isCircular=false"
+        )
+        local data = HttpService:JSONDecode(raw)
+        if data and data.data and data.data[1] and data.data[1].state == "Completed" and data.data[1].imageUrl then
+            return data.data[1].imageUrl
+        end
+        return nil
+    end)
+    if not ok or not iconUrl then return nil end
+
+    local ok2, imgData = pcall(function()
+        return game:HttpGet(iconUrl)
+    end)
+    if not ok2 or not imgData or #imgData < 100 then return nil end
+
+    if writefile and getcustomasset then
+        local fileName = "nyx_icon_" .. tostring(gameId) .. ".png"
+        writefile(fileName, imgData)
+        return getcustomasset(fileName)
+    end
+
+    return nil
+end
+
+-- ═══════════════ GUI ROOT ═══════════════
+local Gui = Create("ScreenGui", {
+    Name = "NyxLauncher",
+    Parent = PlayerGui,
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    IgnoreGuiInset = true,
+})
+
+-- ═══════════════ MAIN WINDOW ═══════════════
+local Main = Create("Frame", {
+    Parent = Gui,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(0, 420, 0, 400),
+    BackgroundColor3 = Theme.BG,
+    BorderSizePixel = 0,
+    Visible = false,
+    ClipsDescendants = true,
+})
+Corner(Main, 16)
+local MainStroke = Stroke(Main, Theme.Stroke, 1)
+Gradient(MainStroke, Theme.Accent, Theme.Stroke, 90)
+
+local MainGrad = Create("Frame", {
+    Parent = Main,
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundColor3 = Theme.BG,
+    BorderSizePixel = 0,
+    ZIndex = -1,
+})
+Corner(MainGrad, 16)
+Gradient(MainGrad, Color3.fromRGB(22, 16, 40), Theme.BG, 115)
+
+Create("ImageLabel", {
+    Parent = Main,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(1, 90, 1, 90),
+    BackgroundTransparency = 1,
+    Image = "rbxassetid://5028857084",
+    ImageColor3 = Theme.AccentDim,
+    ImageTransparency = 0.88,
+    ScaleType = Enum.ScaleType.Slice,
+    SliceCenter = Rect.new(24, 24, 76, 76),
+    ZIndex = -2,
+})
+
+-- ═══════════════ HEADER ═══════════════
+local Header = Create("Frame", {
+    Parent = Main,
+    Size = UDim2.new(1, 0, 0, 54),
+    BackgroundColor3 = Theme.Panel,
+    BorderSizePixel = 0,
+    ZIndex = 20,
+})
+Corner(Header, 16)
+Create("Frame", {
+    Parent = Header,
+    Position = UDim2.new(0, 0, 1, -16),
+    Size = UDim2.new(1, 0, 0, 16),
+    BackgroundColor3 = Theme.Panel,
+    BorderSizePixel = 0,
+    ZIndex = 20,
+})
+
+local HeaderLine = Create("Frame", {
+    Parent = Header,
+    Position = UDim2.new(0, 0, 1, -1),
+    Size = UDim2.new(1, 0, 0, 1),
+    BackgroundColor3 = Color3.new(1, 1, 1),
+    BorderSizePixel = 0,
+    BackgroundTransparency = 0.4,
+    ZIndex = 20,
+})
+Gradient(HeaderLine, Theme.Accent, Color3.fromRGB(20, 16, 36), 0)
+
+local LogoHolder = Create("Frame", {
+    Parent = Header,
+    Position = UDim2.new(0, 16, 0.5, 0),
+    AnchorPoint = Vector2.new(0, 0.5),
+    Size = UDim2.new(0, 24, 0, 24),
+    BackgroundTransparency = 1,
+    ZIndex = 21,
+})
+
+local LogoCore = Create("Frame", {
+    Parent = LogoHolder,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(0, 8, 0, 8),
+    BackgroundColor3 = Theme.Accent,
+    BorderSizePixel = 0,
+    ZIndex = 22,
+})
+Corner(LogoCore, 100)
+
+Create("ImageLabel", {
+    Parent = LogoHolder,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(0, 18, 0, 18),
+    BackgroundTransparency = 1,
+    Image = "rbxassetid://5028857084",
+    ImageColor3 = Theme.Accent,
+    ImageTransparency = 0.5,
+    ScaleType = Enum.ScaleType.Slice,
+    SliceCenter = Rect.new(24, 24, 76, 76),
+    ZIndex = 21,
+})
+
+local OrbitDot = Create("Frame", {
+    Parent = LogoHolder,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, -9, 0.5, 0),
+    Size = UDim2.new(0, 3, 0, 3),
+    BackgroundColor3 = Theme.AccentBright,
+    BorderSizePixel = 0,
+    ZIndex = 22,
+})
+Corner(OrbitDot, 100)
+
+task.spawn(function()
+    local angle = 0
+    while LogoHolder.Parent do
+        angle = (angle + 0.05) % (math.pi * 2)
+        OrbitDot.Position = UDim2.new(0.5, math.cos(angle) * 9, 0.5, math.sin(angle) * 9)
+        LogoCore.Size = UDim2.new(0, 7 + math.sin(angle * 2) * 1.5, 0, 7 + math.sin(angle * 2) * 1.5)
+        task.wait()
+    end
+end)
+
+local Title = Create("TextLabel", {
+    Parent = Header,
+    Position = UDim2.new(0, 46, 0.5, 0),
+    AnchorPoint = Vector2.new(0, 0.5),
+    Size = UDim2.new(0, 200, 0, 18),
+    BackgroundTransparency = 1,
+    Text = "nyx launcher",
+    Font = Enum.Font.GothamBold,
+    TextSize = 15,
+    TextColor3 = Theme.Text,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 21,
+})
+
+local Subtitle = Create("TextLabel", {
+    Parent = Header,
+    Position = UDim2.new(0, 46, 0.5, 9),
+    Size = UDim2.new(0, 200, 0, 12),
+    BackgroundTransparency = 1,
+    Text = "// fast // clean // yours",
+    Font = Enum.Font.Code,
+    TextSize = 9,
+    TextColor3 = Theme.Muted,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 21,
+})
+
+local StatusDot = Create("Frame", {
+    Parent = Header,
+    Position = UDim2.new(1, -110, 0.5, 0),
+    AnchorPoint = Vector2.new(0, 0.5),
+    Size = UDim2.new(0, 6, 0, 6),
+    BackgroundColor3 = Theme.Success,
+    BorderSizePixel = 0,
+    ZIndex = 21,
+})
+Corner(StatusDot, 100)
+
+local StatusLabel = Create("TextLabel", {
+    Parent = Header,
+    Position = UDim2.new(1, -98, 0.5, 0),
+    AnchorPoint = Vector2.new(0, 0.5),
+    Size = UDim2.new(0, 60, 0, 14),
+    BackgroundTransparency = 1,
+    Text = "ready",
+    Font = Enum.Font.Code,
+    TextSize = 10,
+    TextColor3 = Theme.Success,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 21,
+})
+
+task.spawn(function()
+    while StatusDot.Parent do
+        Tween(StatusDot, 0.9, { BackgroundTransparency = 0.5, Size = UDim2.new(0, 8, 0, 8) }, Enum.EasingStyle.Sine)
+        task.wait(0.9)
+        Tween(StatusDot, 0.9, { BackgroundTransparency = 0, Size = UDim2.new(0, 6, 0, 6) }, Enum.EasingStyle.Sine)
+        task.wait(0.9)
+    end
+end)
+
+local CloseBtn = Create("TextButton", {
+    Parent = Header,
+    Position = UDim2.new(1, -36, 0.5, 0),
+    AnchorPoint = Vector2.new(0, 0.5),
+    Size = UDim2.new(0, 24, 0, 24),
+    BackgroundColor3 = Theme.Card,
+    BorderSizePixel = 0,
+    Text = "×",
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    TextColor3 = Theme.SubText,
+    AutoButtonColor = false,
+    ZIndex = 22,
+})
+Corner(CloseBtn, 8)
+Stroke(CloseBtn, Theme.Stroke, 1, 0.3)
+
+CloseBtn.MouseEnter:Connect(function()
+    Tween(CloseBtn, 0.15, { BackgroundColor3 = Theme.Danger, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.new(0, 26, 0, 26) })
+end)
+CloseBtn.MouseLeave:Connect(function()
+    Tween(CloseBtn, 0.15, { BackgroundColor3 = Theme.Card, TextColor3 = Theme.SubText, Size = UDim2.new(0, 24, 0, 24) })
+end)
+
+local function SetStatus(text, color)
+    StatusLabel.Text = text
+    Tween(StatusLabel, 0.2, { TextColor3 = color or Theme.Success })
+    Tween(StatusDot, 0.2, { BackgroundColor3 = color or Theme.Success })
+end
+
+-- ═══════════════ TOAST NOTIFICATIONS ═══════════════
+local ToastHolder = Create("Frame", {
+    Parent = Gui,
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -16, 0, 16),
+    Size = UDim2.new(0, 260, 0, 200),
+    BackgroundTransparency = 1,
+    ZIndex = 100,
+})
+Create("UIListLayout", {
+    Parent = ToastHolder,
+    Padding = UDim.new(0, 6),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    HorizontalAlignment = Enum.HorizontalAlignment.Right,
+})
+
+local ToastOrder = 0
+local function Toast(text, color, duration)
+    ToastOrder += 1
+    local toast = Create("Frame", {
+        Parent = ToastHolder,
+        Size = UDim2.new(0, 250, 0, 36),
+        BackgroundColor3 = Theme.Panel,
+        BorderSizePixel = 0,
+        ZIndex = 100,
+        LayoutOrder = ToastOrder,
+    })
+    Corner(toast, 10)
+    local ts = Stroke(toast, color or Theme.Accent, 1)
+
+    Create("Frame", {
+        Parent = toast,
+        Position = UDim2.new(0, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        Size = UDim2.new(0, 3, 0, 20),
+        BackgroundColor3 = color or Theme.Accent,
+        BorderSizePixel = 0,
+    })
+
+    Create("TextLabel", {
+        Parent = toast,
+        Position = UDim2.new(0, 12, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        Size = UDim2.new(1, -24, 0, 14),
+        BackgroundTransparency = 1,
+        Text = text,
+        Font = Enum.Font.GothamMedium,
+        TextSize = 11,
+        TextColor3 = Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+
+    toast.BackgroundTransparency = 1
+    ts.Transparency = 1
+    Tween(toast, 0.3, { BackgroundTransparency = 0 })
+    Tween(ts, 0.3, { Transparency = 0 })
+
+    task.delay(duration or 3, function()
+        Tween(toast, 0.3, { BackgroundTransparency = 1, Position = toast.Position + UDim2.new(0, 20, 0, 0) })
+        Tween(ts, 0.3, { Transparency = 1 })
+        task.delay(0.35, function() toast:Destroy() end)
+    end)
+end
+
+-- ═══════════════ SCROLL LIST ═══════════════
+local Scroll = Create("ScrollingFrame", {
+    Parent = Main,
+    Position = UDim2.new(0, 14, 0, 62),
+    Size = UDim2.new(1, -28, 1, -128),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 2,
+    ScrollBarImageColor3 = Theme.Accent,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    ZIndex = 10,
+})
+
+Create("UIListLayout", {
+    Parent = Scroll,
+    Padding = UDim.new(0, 8),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+})
+
+-- ═══════════════ BUILD ENTRIES ═══════════════
+local Selected = nil
+local SelectedIndex = nil
+local Cards = {}
+
+for i, entry in ipairs(LaunchList) do
+    local card = Create("TextButton", {
+        Parent = Scroll,
+        Size = UDim2.new(1, -8, 0, 68),
+        BackgroundColor3 = Theme.Card,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+        LayoutOrder = i,
+        ZIndex = 10,
+        ClipsDescendants = true,
+    })
+    Corner(card, 12)
+    local cardStroke = Stroke(card, Theme.Stroke, 1)
+
+    local cardGlow = Create("ImageLabel", {
+        Parent = card,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(1, 30, 1, 30),
+        BackgroundTransparency = 1,
+        Image = "rbxassetid://5028857084",
+        ImageColor3 = Theme.AccentDim,
+        ImageTransparency = 1,
+        ScaleType = Enum.ScaleType.Slice,
+        SliceCenter = Rect.new(24, 24, 76, 76),
+        ZIndex = -1,
+    })
+
+    local strip = Create("Frame", {
+        Name = "Strip",
+        Parent = card,
+        Position = UDim2.new(0, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        Size = UDim2.new(0, 3, 0, 0),
+        BackgroundColor3 = Theme.Accent,
+        BorderSizePixel = 0,
+        BackgroundTransparency = 1,
+        ZIndex = 11,
+    })
+    Corner(strip, 2)
+
+    local iconHolder = Create("Frame", {
+        Name = "IconHolder",
+        Parent = card,
+        Position = UDim2.new(0, 12, 0.5, 0),        AnchorPoint = Vector2.new(0, 0.5),
+        Size = UDim2.new(0, 46, 0, 46),
+        BackgroundColor3 = Color3.fromRGB(14, 14, 22),
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        ZIndex = 10,
+    })
+    Corner(iconHolder, 10)
+    local iconStroke = Stroke(iconHolder, Theme.Stroke, 1, 0.3)
+
+    local fallbackIcon = Create("TextLabel", {
+        Parent = iconHolder,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "◈",
+        Font = Enum.Font.GothamBold,
+        TextSize = 18,
+        TextColor3 = Theme.SubText,
+        ZIndex = 1,
+    })
+
+    local gameIcon = Create("ImageLabel", {
+        Parent = iconHolder,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        ImageTransparency = 1,
+        ZIndex = 2,
+    })
+    Corner(gameIcon, 10)
+
+    if entry.gameId and entry.gameId > 0 then
+        task.spawn(function()
+            local assetUrl = GetGameIcon(entry.gameId)
+            if assetUrl and gameIcon.Parent then
+                gameIcon.Image = assetUrl
+                local t0 = os.clock()
+                while gameIcon.Parent and os.clock() - t0 < 5 do
+                    if gameIcon.IsLoaded then
+                        Tween(gameIcon, 0.4, { ImageTransparency = 0 })
+                        Tween(fallbackIcon, 0.4, { TextTransparency = 1 })
+                        break
+                    end
+                    task.wait(0.1)
+                end
+                if os.clock() - t0 >= 5 and gameIcon.Parent then
+                    gameIcon.ImageTransparency = 0
+                    fallbackIcon.TextTransparency = 1
+                end
+            end
+        end)
+    end
+
+    Create("TextLabel", {
+        Parent = card,
+        Position = UDim2.new(0, 68, 0, 13),
+        Size = UDim2.new(1, -96, 0, 18),
+        BackgroundTransparency = 1,
+        Text = entry.name,
+        Font = Enum.Font.GothamMedium,
+        TextSize = 14,
+        TextColor3 = Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 11,
+    })
+
+    Create("TextLabel", {
+        Parent = card,
+        Position = UDim2.new(0, 68, 0, 35),
+        Size = UDim2.new(1, -96, 0, 14),
+        BackgroundTransparency = 1,
+        Text = entry.desc,
+        Font = Enum.Font.Gotham,
+        TextSize = 11,
+        TextColor3 = Theme.Muted,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 11,
+    })
+
+    local arrow = Create("TextLabel", {
+        Parent = card,
+        Position = UDim2.new(1, -28, 0.5, 0),
+        AnchorPoint = Vector2.new(0, 0.5),
+        Size = UDim2.new(0, 16, 0, 16),
+        BackgroundTransparency = 1,
+        Text = "→",
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = Theme.Muted,
+        ZIndex = 11,
+    })
+
+    Cards[i] = {
+        frame = card,
+        stroke = cardStroke,
+        glow = cardGlow,
+        strip = strip,
+        arrow = arrow,
+        iconHolder = iconHolder,
+        iconStroke = iconStroke,
+        entry = entry,
+    }
+
+    card.MouseEnter:Connect(function()
+        if Selected ~= card then
+            Tween(card, 0.15, { BackgroundColor3 = Theme.CardHover })
+            Tween(cardGlow, 0.2, { ImageTransparency = 0.93 })
+            Tween(cardStroke, 0.15, { Color = Theme.StrokeBright })
+            Tween(arrow, 0.15, { TextColor3 = Theme.Accent, Position = UDim2.new(1, -24, 0.5, 0) })
+            Tween(iconStroke, 0.15, { Color = Theme.StrokeBright, Transparency = 0 })
+        end
+    end)
+    card.MouseLeave:Connect(function()
+        if Selected ~= card then
+            Tween(card, 0.15, { BackgroundColor3 = Theme.Card })
+            Tween(cardGlow, 0.2, { ImageTransparency = 1 })
+            Tween(cardStroke, 0.15, { Color = Theme.Stroke })
+            Tween(arrow, 0.15, { TextColor3 = Theme.Muted, Position = UDim2.new(1, -28, 0.5, 0) })
+            Tween(iconStroke, 0.15, { Color = Theme.Stroke, Transparency = 0.3 })
+        end
+    end)
+
+    card.MouseButton1Click:Connect(function()
+        Ripple(card)
+
+        if Selected and Selected ~= card then
+            Tween(Selected, 0.15, { BackgroundColor3 = Theme.Card })
+            local oldStrip = Selected:FindFirstChild("Strip")
+            if oldStrip then Tween(oldStrip, 0.2, { BackgroundTransparency = 1, Size = UDim2.new(0, 3, 0, 0) }) end
+        end
+
+        Selected = card
+        SelectedIndex = i
+        Tween(card, 0.15, { BackgroundColor3 = Theme.CardSelect })
+        Tween(cardStroke, 0.15, { Color = Theme.Accent })
+        Tween(cardGlow, 0.2, { ImageTransparency = 0.88 })
+        Tween(strip, 0.25, { BackgroundTransparency = 0, Size = UDim2.new(0, 3, 0, 52) })
+        Tween(arrow, 0.15, { TextColor3 = Theme.AccentBright })
+        Tween(iconStroke, 0.15, { Color = Theme.Accent, Transparency = 0 })
+
+        SetStatus(entry.name:lower(), Theme.Accent)
+    end)
+end
+
+-- ═══════════════ LAUNCH BUTTON ═══════════════
+local LaunchBtn = Create("TextButton", {
+    Parent = Main,
+    Position = UDim2.new(0.5, 0, 1, -14),
+    AnchorPoint = Vector2.new(0.5, 1),
+    Size = UDim2.new(1, -28, 0, 46),
+    BackgroundColor3 = Theme.Accent,
+    BorderSizePixel = 0,
+    Text = "",
+    AutoButtonColor = false,
+    ZIndex = 10,
+    ClipsDescendants = true,
+})
+Corner(LaunchBtn, 12)
+Gradient(LaunchBtn, Color3.fromRGB(150, 55, 240), Color3.fromRGB(110, 30, 200), 90)
+
+local Shine = Create("Frame", {
+    Parent = LaunchBtn,
+    Position = UDim2.new(-0.6, 0, 0, 0),
+    Size = UDim2.new(0, 60, 1, 0),
+    BackgroundColor3 = Color3.new(1, 1, 1),
+    BackgroundTransparency = 0.88,
+    BorderSizePixel = 0,
+    ZIndex = 11,
+})
+Corner(Shine, 12)
+Create("UIGradient", { Parent = Shine, Rotation = 0, Transparency = NumberSequence.new(1, 0.75) })
+
+task.spawn(function()
+    while LaunchBtn.Parent do
+        Tween(Shine, 1.8, { Position = UDim2.new(1.4, 0, 0, 0) }, Enum.EasingStyle.Sine)
+        task.wait(1.8)
+        Shine.Position = UDim2.new(-0.6, 0, 0, 0)
+        task.wait(3.5)
+    end
+end)
+
+Create("TextLabel", {
+    Parent = LaunchBtn,
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Text = "LAUNCH",
+    Font = Enum.Font.GothamBold,
+    TextSize = 15,
+    TextColor3 = Color3.new(1, 1, 1),
+    ZIndex = 12,
+})
+
+LaunchBtn.MouseEnter:Connect(function()
+    Tween(LaunchBtn, 0.15, { Size = UDim2.new(1, -20, 0, 46) })
+end)
+LaunchBtn.MouseLeave:Connect(function()
+    Tween(LaunchBtn, 0.15, { Size = UDim2.new(1, -28, 0, 46) })
+end)
+
+-- ═══════════════ FOOTER ═══════════════
+local Footer = Create("Frame", {
+    Parent = Main,
+    Position = UDim2.new(0, 14, 1, -66),
+    Size = UDim2.new(1, -28, 0, 14),
+    BackgroundTransparency = 1,
+    ZIndex = 10,
+})
+
+Create("TextLabel", {
+    Parent = Footer,
+    Position = UDim2.new(0, 0, 4.1, 0),
+    AnchorPoint = Vector2.new(0, 0.5),
+    Size = UDim2.new(0, 150, 0, 12),
+    BackgroundTransparency = 1,
+    Text = "nyx v2 // rightshift",
+    Font = Enum.Font.Code,
+    TextSize = 9,
+    TextColor3 = Theme.Muted,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 10,
+})
+
+Create("TextLabel", {
+    Parent = Footer,
+    Position = UDim2.new(1, 0, 4.0, 0),
+    AnchorPoint = Vector2.new(1, 0.5),
+    Size = UDim2.new(0, 60, 0, 12),
+    BackgroundTransparency = 1,
+    Text = "● " .. tostring(#LaunchList) .. " scripts",
+    Font = Enum.Font.Code,
+    TextSize = 9,
+    TextColor3 = Theme.Muted,
+    TextXAlignment = Enum.TextXAlignment.Right,
+    ZIndex = 10,
+})
+
+-- ═══════════════ CONFIRM PANEL ═══════════════
+local ConfirmOverlay = Create("Frame", {
+    Parent = Main,
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Visible = false,
+    ZIndex = 50,
+})
+
+local ConfirmBox = Create("Frame", {
+    Parent = ConfirmOverlay,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(0, 310, 0, 190),
+    BackgroundColor3 = Theme.Panel,
+    BorderSizePixel = 0,
+    ZIndex = 51,
+    ClipsDescendants = true,
+})
+Corner(ConfirmBox, 14)
+local ConfirmStroke = Stroke(ConfirmBox, Theme.Accent, 1, 0.2)
+Gradient(ConfirmStroke, Theme.Accent, Theme.StrokeBright, 90)
+
+Create("ImageLabel", {
+    Parent = ConfirmOverlay,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(0, 330, 0, 210),
+    BackgroundTransparency = 1,
+    Image = "rbxassetid://5028857084",
+    ImageColor3 = Theme.AccentDim,
+    ImageTransparency = 0.92,
+    ScaleType = Enum.ScaleType.Slice,
+    SliceCenter = Rect.new(24, 24, 76, 76),
+    ZIndex = 50,
+})
+
+local WarnIcon = Create("TextLabel", {
+    Parent = ConfirmBox,
+    AnchorPoint = Vector2.new(0.5, 0),
+    Position = UDim2.new(0.5, 0, 0, 14),
+    Size = UDim2.new(0, 28, 0, 28),
+    BackgroundTransparency = 1,
+    Text = "⚠",
+    Font = Enum.Font.GothamBold,
+    TextSize = 22,
+    TextColor3 = Theme.Warning,
+    ZIndex = 52,
+})
+
+local ConfirmTitle = Create("TextLabel", {
+    Parent = ConfirmBox,
+    AnchorPoint = Vector2.new(0.5, 0),
+    Position = UDim2.new(0.5, 0, 0, 46),
+    Size = UDim2.new(1, -20, 0, 16),
+    BackgroundTransparency = 1,
+    Text = "confirm launch",
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    TextColor3 = Theme.Text,
+    ZIndex = 52,
+})
+
+local ConfirmIconHolder = Create("Frame", {
+    Parent = ConfirmBox,
+    AnchorPoint = Vector2.new(0.5, 0),
+    Position = UDim2.new(0.5, 0, 0, 68),
+    Size = UDim2.new(0, 36, 0, 36),
+    BackgroundColor3 = Color3.fromRGB(14, 14, 22),
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+    ZIndex = 52,
+})
+Corner(ConfirmIconHolder, 8)
+Stroke(ConfirmIconHolder, Theme.Accent, 1, 0.2)
+
+local ConfirmIcon = Create("ImageLabel", {
+    Parent = ConfirmIconHolder,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    ImageTransparency = 1,
+    ZIndex = 53,
+})
+Corner(ConfirmIcon, 8)
+
+local ConfirmFallback = Create("TextLabel", {
+    Parent = ConfirmIconHolder,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Text = "◈",
+    Font = Enum.Font.GothamBold,
+    TextSize = 16,
+    TextColor3 = Theme.SubText,
+    ZIndex = 52,
+})
+
+local ConfirmScript = Create("TextLabel", {
+    Parent = ConfirmBox,
+    AnchorPoint = Vector2.new(0.5, 0),
+    Position = UDim2.new(0.5, 0, 0, 110),
+    Size = UDim2.new(1, -20, 0, 16),
+    BackgroundTransparency = 1,
+    Text = "",
+    Font = Enum.Font.Code,
+    TextSize = 13,
+    TextColor3 = Theme.AccentBright,
+    ZIndex = 52,
+})
+
+local ConfirmDesc = Create("TextLabel", {
+    Parent = ConfirmBox,
+    AnchorPoint = Vector2.new(0.5, 0),
+    Position = UDim2.new(0.5, 0, 0, 130),
+    Size = UDim2.new(1, -20, 0, 13),
+    BackgroundTransparency = 1,
+    Text = "are you sure you want to load this?",
+    Font = Enum.Font.Gotham,
+    TextSize = 11,
+    TextColor3 = Theme.Muted,
+    ZIndex = 52,
+})
+
+local ConfirmButtons = Create("Frame", {
+    Parent = ConfirmBox,
+    AnchorPoint = Vector2.new(0.5, 1),
+    Position = UDim2.new(0.5, 0, 1, -12),
+    Size = UDim2.new(1, -24, 0, 36),
+    BackgroundTransparency = 1,
+    ZIndex = 52,
+})
+
+local CancelBtn = Create("TextButton", {
+    Parent = ConfirmButtons,
+    Position = UDim2.new(0, 0, 0, 0),
+    Size = UDim2.new(0.5, -4, 0, 36),
+    BackgroundColor3 = Theme.Card,
+    BorderSizePixel = 0,
+    Text = "cancel",
+    Font = Enum.Font.GothamMedium,
+    TextSize = 12,
+    TextColor3 = Theme.SubText,
+    AutoButtonColor = false,
+    ZIndex = 53,
+})
+Corner(CancelBtn, 10)
+Stroke(CancelBtn, Theme.Stroke, 1, 0.3)
+
+CancelBtn.MouseEnter:Connect(function()
+    Tween(CancelBtn, 0.15, { BackgroundColor3 = Theme.CardHover, TextColor3 = Theme.Text })
+end)
+CancelBtn.MouseLeave:Connect(function()
+    Tween(CancelBtn, 0.15, { BackgroundColor3 = Theme.Card, TextColor3 = Theme.SubText })
+end)
+
+local YesBtn = Create("TextButton", {
+    Parent = ConfirmButtons,
+    Position = UDim2.new(0.5, 4, 0, 0),
+    Size = UDim2.new(0.5, -4, 0, 36),
+    BackgroundColor3 = Theme.Accent,
+    BorderSizePixel = 0,
+    Text = "launch it",
+    Font = Enum.Font.GothamBold,
+    TextSize = 12,
+    TextColor3 = Color3.new(1, 1, 1),
+    AutoButtonColor = false,
+    ZIndex = 53,
+})
+Corner(YesBtn, 10)
+Gradient(YesBtn, Color3.fromRGB(150, 55, 240), Color3.fromRGB(110, 30, 200), 90)
+
+YesBtn.MouseEnter:Connect(function()
+    Tween(YesBtn, 0.15, { BackgroundColor3 = Theme.AccentBright })
+end)
+YesBtn.MouseLeave:Connect(function()
+    Tween(YesBtn, 0.15, { BackgroundColor3 = Theme.Accent })
+end)
+
+local ConfirmOpen = false
+
+local function ShowConfirm(scriptName)
+    if ConfirmOpen then return end
+    ConfirmOpen = true
+
+    ConfirmScript.Text = scriptName
+
+   if Selected then
+        local holder = Selected:FindFirstChild("IconHolder")
+        if holder then
+            local img = holder:FindFirstChildOfClass("ImageLabel")
+            if img and img.Image ~= "" and img.ImageTransparency < 1 then
+                ConfirmIcon.Image = img.Image
+                ConfirmIcon.ImageTransparency = 0
+                ConfirmFallback.TextTransparency = 1
+            else
+                ConfirmIcon.Image = ""
+                ConfirmIcon.ImageTransparency = 1
+                ConfirmFallback.TextTransparency = 0
+            end
+        end
+    end
+
+    ConfirmOverlay.Visible = true
+    ConfirmOverlay.BackgroundTransparency = 1
+    ConfirmBox.BackgroundTransparency = 1
+    ConfirmBox.Size = UDim2.new(0, 280, 0, 172)
+    ConfirmBox.Rotation = 1.5
+
+    Tween(ConfirmOverlay, 0.2, { BackgroundTransparency = 0.45 })
+    Tween(ConfirmBox, 0.35, { BackgroundTransparency = 0, Size = UDim2.new(0, 310, 0, 190), Rotation = 0 }, Enum.EasingStyle.Back)
+end
+
+local function HideConfirm()
+    ConfirmOpen = false
+    Tween(ConfirmOverlay, 0.15, { BackgroundTransparency = 1 })
+    Tween(ConfirmBox, 0.15, { BackgroundTransparency = 1, Size = UDim2.new(0, 290, 0, 178), Rotation = -1.5 })
+    task.delay(0.2, function()
+        if not ConfirmOpen then
+            ConfirmOverlay.Visible = false
+            ConfirmBox.Rotation = 0
+        end
+    end)
+end
+
+local function DoLaunch(entry)
+    SetStatus("launching...", Theme.Warning)
+    Toast("launching " .. entry.name:lower() .. "...", Theme.Warning, 2)
+
+    Tween(LaunchBtn, 0.08, { Size = UDim2.new(1, -36, 0, 44) })
+    task.delay(0.1, function()
+        Tween(LaunchBtn, 0.12, { Size = UDim2.new(1, -28, 0, 46) })
+    end)
+
+    task.delay(0.3, function()
+        local ok, err = pcall(entry.action)
+        if ok then
+            SetStatus("loaded ✓", Theme.Success)
+            Toast(entry.name .. " loaded", Theme.Success)
+        else
+            SetStatus("failed", Theme.Danger)
+            Toast(entry.name .. " failed", Theme.Danger, 4)
+        end
+        task.delay(3, function()
+            SetStatus("ready", Theme.Success)
+        end)
+    end)
+end
+
+CancelBtn.MouseButton1Click:Connect(function()
+    Ripple(CancelBtn)
+    HideConfirm()
+end)
+
+YesBtn.MouseButton1Click:Connect(function()
+    Ripple(YesBtn)
+    HideConfirm()
+    if SelectedIndex and LaunchList[SelectedIndex] then
+        task.delay(0.15, function()
+            DoLaunch(LaunchList[SelectedIndex])
+        end)
+    end
+end)
+
+LaunchBtn.MouseButton1Click:Connect(function()
+    Ripple(LaunchBtn)
+    if SelectedIndex and LaunchList[SelectedIndex] then
+        ShowConfirm(LaunchList[SelectedIndex].name)
+    else
+        SetStatus("nothing selected", Theme.Danger)
+        Toast("select a script first", Theme.Danger)
+        local orig = Main.Position
+        Tween(Main, 0.04, { Position = orig + UDim2.new(0, 6, 0, 0) }, Enum.EasingStyle.Linear)
+        task.wait(0.04)
+        Tween(Main, 0.04, { Position = orig + UDim2.new(0, -6, 0, 0) }, Enum.EasingStyle.Linear)
+        task.wait(0.04)
+        Tween(Main, 0.04, { Position = orig + UDim2.new(0, 4, 0, 0) }, Enum.EasingStyle.Linear)
+        task.wait(0.04)
+        Tween(Main, 0.06, { Position = orig }, Enum.EasingStyle.Linear)
+        task.delay(2, function()
+            SetStatus("ready", Theme.Success)
+        end)
+    end
+end)
+
+-- ═══════════════ OPEN / HIDE / UNLOAD ═══════════════
+-- HideShow: toggles visibility WITHOUT unloading
+-- UnloadFull: destroys everything (× button only)
+
+local IsOpen = false
+local Connections = {}
+
+local function TrackConn(conn)
+    table.insert(Connections, conn)
+    return conn
+end
+
+local function UnloadFull()
+    for _, conn in ipairs(Connections) do
+        if conn.Connected then
+            conn:Disconnect()
+        end
+    end
+
+    if isfolder and isfile then
+        for _, entry in ipairs(LaunchList) do
+            if entry.gameId and entry.gameId > 0 then
+                local fileName = "nyx_icon_" .. tostring(entry.gameId) .. ".png"
+                if isfile(fileName) then
+                    delfile(fileName)
+                end
+            end
+        end
+    end
+
+    Gui:Destroy()
+    print("[nyx] launcher unloaded")
+end
+
+-- full open (first time or after show)
+local function Open()
+    IsOpen = true
+    Main.Visible = true
+    Main.BackgroundTransparency = 1
+    Main.Size = UDim2.new(0, 390, 0, 370)
+    Main.Rotation = 1.5
+
+    for _, card in pairs(Cards) do
+        card.frame.Visible = false
+    end
+
+    Tween(Main, 0.45, { BackgroundTransparency = 0, Size = UDim2.new(0, 420, 0, 400), Rotation = 0 }, Enum.EasingStyle.Back)
+
+    task.delay(0.15, function()
+        for i, card in pairs(Cards) do
+            task.delay(i * 0.1, function()
+                if card.frame.Parent then
+                    card.frame.Visible = true
+                    card.frame.BackgroundTransparency = 1
+                    card.frame.Size = UDim2.new(1, -20, 0, 68)
+                    Tween(card.frame, 0.3, { BackgroundTransparency = 0, Size = UDim2.new(1, -8, 0, 68) }, Enum.EasingStyle.Back)
+                end
+            end)
+        end
+    end)
+
+    task.delay(0.2, function()
+        local fullTitle = "nyx launcher"
+        for j = 1, #fullTitle do
+            Title.Text = fullTitle:sub(1, j)
+            task.wait(0.03)
+        end
+        task.delay(0.15, function()
+            local fullSub = "nyx launcher // Werxa"
+            for j = 1, #fullSub do
+                Subtitle.Text = fullSub:sub(1, j)
+                task.wait(0.015)
+            end
+        end)
+    end)
+end
+
+-- simple show (already initialized, just unhide)
+local function Show()
+    IsOpen = true
+    Main.Visible = true
+    Main.BackgroundTransparency = 1
+    Tween(Main, 0.3, { BackgroundTransparency = 0 }, Enum.EasingStyle.Quart)
+end
+
+-- simple hide (keeps everything alive)
+local function Hide()
+    IsOpen = false
+    HideConfirm()
+    Tween(Main, 0.2, { BackgroundTransparency = 1 })
+    task.delay(0.25, function()
+        if not IsOpen then
+            Main.Visible = false
+        end
+    end)
+end
+
+-- full close with unload (× button)
+local function CloseAndUnload()
+    IsOpen = false
+    HideConfirm()
+
+    for i, card in pairs(Cards) do
+        task.delay((#Cards - i) * 0.03, function()
+            if card.frame.Parent then
+                Tween(card.frame, 0.12, { BackgroundTransparency = 1, Size = UDim2.new(1, -16, 0, 68) })
+            end
+        end)
+    end
+
+    task.delay(0.1, function()
+        Tween(Main, 0.25, { BackgroundTransparency = 1, Size = UDim2.new(0, 395, 0, 380), Rotation = -1.5 })
+        task.delay(0.3, function()
+            UnloadFull()
+        end)
+    end)
+end
+
+-- × button = full unload
+TrackConn(CloseBtn.MouseButton1Click:Connect(function()
+    Ripple(CloseBtn)
+    CloseAndUnload()
+end))
+
+-- RightShift = hide/show only
+TrackConn(UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed and input.KeyCode == Enum.KeyCode.RightShift then
+        if IsOpen then
+            Hide()
+        else
+            Show()
+        end
+    end
+end))
+
+-- ═══════════════ DRAG ═══════════════
+do
+    local dragging, dragStart, startPos
+
+    TrackConn(Header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = Main.Position
+        end
+    end))
+
+    TrackConn(UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end))
+
+    TrackConn(UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end))
+end
+
+-- ═══════════════ GO ═══════════════
+Open()
+print("[nyx] launcher v2 loaded — RightShift: hide/show, ×: unload 💕")
